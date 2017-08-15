@@ -41,6 +41,7 @@ def run(path, start_group, end_group):
         index += 1
 
     #находим тип функций
+    print('FUNCTIONS')
     function_types = parse_functions_utils.getFunctionsReturnTypeSize(functions)
     #todo использовать числа при рандомизации
     # all_registers = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11']
@@ -89,11 +90,11 @@ def run(path, start_group, end_group):
     full_registers_count = 0
     #1935-36
     print(start_group, ":", end_group)
-    for group in groups: # 66 libcrypto - pop lr => bl - перезапись регистров
+    for group in groups[start_group:end_group]: # 66 libcrypto - pop lr => bl - перезапись регистров
         first, last = group[0], group[-1]
         #print(first)
-        return_size = function_types[first[0]]
-        print(return_size)
+        #return_size = function_types[first[0]]
+        #print(return_size)
         #print(parse_functions_utils.getFunctionReturnTypeSize(first[-1]))
         #print(last[0])
         #print(first, last)
@@ -104,6 +105,11 @@ def run(path, start_group, end_group):
 
         # добавляем регистры в начало, считает их количество
         real_reg_count = len(first[3])
+        #return_size = 0 if first[0]=='14e3b4' else 4
+        return_size = function_types[first[0]]
+        #return_size=4
+        if return_size == 0:
+            print('0')
         new_registers, table = utils.addRegistersToStartAndEnd(first[3], first[1], return_size)
         if new_registers == -1:
             full_registers_count+=1
