@@ -1,10 +1,10 @@
 import re, os.path, cxxfilt, glob, codecs
 from timeit import timeit
-#java_dir = '/home/daria/Documents/android-ndk-master/hello-libs/app/src/main/java/' # todo set directory for java
-java_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/src/main/java/'
-jni_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/jni'
+java_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/java/' # todo set directory for java
+#java_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/src/main/java/'
+#jni_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/jni'
 #java_dir = '/home/daria/Documents/android-ndk-master/hello-libs/app/src/main/java/'
-#jni_dir = '/home/daria/Documents/android-ndk-master/hello-libs/app/src/main/cpp/'
+jni_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/cpp/'
 
 # https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/design.html
 # http://docs.oracle.com/javase/specs/jls/se7/html/jls-4.html#jls-4.2
@@ -15,6 +15,7 @@ C_types32 = ['int32_t','int16_t', 'int8_t', 'int',
              'float', 'char', 'bool', 'long int', 'wchar_t'] #unsigned не учитываем
 C_types64 = ['long long', 'double', 'int64_t', 'jlong', 'jdouble']
 C_types128 = ['long double']
+JNI_types = ['']
 
 #for native functions declared in Java code
 def getJNIfunctionType(JNI_function_name):
@@ -24,10 +25,19 @@ def getJNIfunctionType(JNI_function_name):
     #ищем escaped символы
     #if re.search('_[0-3]', function_name) is not None:
         #todo заменить на исходные символы
-
-    splitted_path = function_name.split('_')
+    #todo replace _2, _3, ...
+    params = ''
+    if '__' in function_name:
+        params = function_name.split('__')[-1]
+        params = parseJavaFuncParams(params)
+    function_name = function_name.split('__')[0].replace('_', ' ').replace(' 1','_')
+    splitted_path = function_name.split(' ')
+    #a = re.split('_[^0-9]', function_name)
     short_func_name = splitted_path[-1]
     path = java_dir+'/'.join(splitted_path[1:-1])+'.java' #remove Java and func name
+
+
+
     if not os.path.isfile(path):
         print('NO FILE {0}!'.format(path))
         return -1 #todo
@@ -51,13 +61,13 @@ def getCFunctionType(func_name):
     if func_name == '': # нет функции -> не можем определить тип ->None
         return None
     #jni типы не берем, потому что такие функции начинаются с _Java
-    pattern = C_types128 + C_types64 + C_types32 + void_type +['\*']
+    pattern = C_types128 + C_types64 + C_types32 + void_type +['\*', '\[\]']
     type = re.search('({0})\s*\*?\s*'.format('|'.join(pattern)), func_name)
     # учесть указатели!
 
     if type is None: #функция есть, но тип не 128 и не 64 и не void -> 32
         return ''
-    if type.group() == '*':
+    if type.group() in ['*','[]']:
         aaa=1
     return type.group().strip()
 
@@ -80,12 +90,11 @@ def getTypeSize(type, isJNI):
       return 4
     if isJNI and type in Java_types64 or not isJNI and type in C_types64:
         return 2
-    if '*' in type or isJNI and type in Java_types32 or not isJNI and type in C_types32:
+    if '*' in type or '[]' in type or isJNI and type in Java_types32 or not isJNI and type in C_types32:
         return 1
     # важно, что void после *, так как void* = 32 бита
     if type == 'void':
         return 0
-    #return 1 # не стандартный 64 и 128 -> 32 или
     return 4
 
 
@@ -139,7 +148,7 @@ def getFunctionsReturnTypeSize(functions):
     print('2 bytes: ', len([f for f in return_sizes if return_sizes[f]==2]))
     print('1 bytes: ', len([f for f in return_sizes if return_sizes[f]==1]))
     print('0 bytes: ', len([f for f in return_sizes if return_sizes[f]==0]))
-    print(','.join([f for f in return_sizes if return_sizes[f]==0]))
+    #print(','.join([f for f in return_sizes if return_sizes[f]==0]))
 
     notfound = [backup[f] for f in return_sizes if return_sizes[f]==4]
     return return_sizes
@@ -205,6 +214,7 @@ def findFunctionsInFiles(functions):
                 if non_escaped in types_patterns:
                     p = p.replace(p, types_patterns[non_escaped])
                 #p = '\s*j?'+p #для jni
+                p = '(' + p + ')'
                 params_list[i] = p.replace('\\*', '\\s*\\*\\s*').replace('\\&', '\\s*\\&\\s*')
 
             params_regex = '.*,\\s*'.join(params_list) #todo escape?
@@ -216,9 +226,8 @@ def findFunctionsInFiles(functions):
         #                             +'\*?{0}\({1}\)(\s[a-zA_Z_]+)?\s'
         #                             .format(re.escape(func.split('(')[0]), params_regex)
         #                             +'{0,};', re.MULTILINE)
-        if 'DSO_merge' in func:
-            aa=1
-        result_pattern = re.compile('\n\s*([a-zA-Z0-9_"\*]+\s+){0,3}'
+
+        result_pattern = re.compile('\n\s*([a-zA-Z0-9_"\*\[\]]+\s+){0,3}'
                                     +'\*?{0}\s*\({1}.*\)(\s[a-zA_Z_]+)?\s'
                                     .format(re.escape(func.split('(')[0]), params_regex)
                                     +'*(;|{)', re.MULTILINE)
@@ -250,3 +259,38 @@ def findFunctionsInFiles(functions):
     patterns  = find(jni_dir+'/**/*.c*')
 
     return result
+
+
+
+
+
+def parseJavaFuncParams(params):
+
+    signatures = {'Z':'boolean', 'B':'byte', 'C':'char', 'S':'short', 'I':'int',
+                  'J':'long', 'F':'float', 'V':'void', 'D':'double'}
+
+    #todo think about _ in complex_type_name (e.g.java_lang_String)
+    complex_types = re.findall('L(?:[a-zA-Z0-9]*(?:_(?:0|1|3))*)*_2', params)
+    replacer = dict()
+    for index, type in enumerate(complex_types):
+        replacer[type] = str(index)*len(type)
+        #заменяем complex_types на пустышки,
+        # чтобы не перепутать их с большими буквами из примитивных
+        params = params.replace(type, replacer[type])
+
+    #заменяем примитивные типы, разделяем запятыми
+    for sign, type in signatures.items():
+        params = params.replace(sign, type+',')
+
+    #возвращаем сложные типы
+    for index, type in enumerate(complex_types):
+        params = params.replace(replacer[type], type)
+
+    #обрабатываем сложные типы
+    params = params.replace('L', '').replace('_2', ',').replace('_3', '[')
+    #заменяем уникоды
+    unicode_chars = re.findall('_0[0-9]+', params)
+    for c in unicode_chars:
+        params = params.replace(c, chr(int(c[2:])))
+
+    return params[-1] #убираем последнюю запятую

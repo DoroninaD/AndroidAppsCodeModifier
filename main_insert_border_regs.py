@@ -3,7 +3,8 @@ import re, utils, arm_translate, parse,parse_functions_utils
 
 
 
-def run(path, start_group, end_group):
+def run(path, start_group, end_group, DEBUG):
+    print('DEBUG ', DEBUG)
     f = open(path+'.txt', 'r')
     lines = f.readlines()
     indices = [i for i, s in enumerate(lines) if '.text' in s]
@@ -41,8 +42,10 @@ def run(path, start_group, end_group):
         index += 1
 
     #находим тип функций
-    print('FUNCTIONS')
-    function_types = parse_functions_utils.getFunctionsReturnTypeSize(functions)
+    function_types = []
+    if DEBUG:
+        print('FUNCTIONS')
+        function_types = parse_functions_utils.getFunctionsReturnTypeSize(functions)
     #todo использовать числа при рандомизации
     # all_registers = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11']
 
@@ -72,13 +75,13 @@ def run(path, start_group, end_group):
     # фильтруем группы - убираем те, в которых последний pop нe pc
     print ('GROUPS:',  len(groups))
 
- #   gr = groups
- #   groups = []
- #   for group in gr:
-#        if all(g[6]=='pc' for g in group[1:]):
-#            groups.append(group)
- #       if group[-1][6] == 'pc':
- #           groups.append(group)
+    gr = groups
+    groups = []
+    for group in gr:
+        if all(g[6]=='pc' for g in group[1:]):
+            groups.append(group)
+        #if group[-1][6] == 'pc':
+         #   groups.append(group)
 
     #groups = [group for group in groups if group[i][6]=='pc' for i in range(1,len(group))]
     print ('New_GROUPS:', len(groups))
@@ -106,7 +109,7 @@ def run(path, start_group, end_group):
         # добавляем регистры в начало, считает их количество
         real_reg_count = len(first[3])
         #return_size = 0 if first[0]=='14e3b4' else 4
-        return_size = function_types[first[0]]
+        return_size = function_types[first[0]] if DEBUG else 4
         #return_size=4
         if return_size == 0:
             print('0')
