@@ -28,15 +28,17 @@ def getJNIfunctionType(JNI_function_name):
     #todo replace _2, _3, ...
     params = ''
     if '__' in function_name:
-        params = function_name.split('__')[-1]
-        params = parseJavaFuncParams(params)
+        params = parseJavaFuncParams(function_name.split('__')[-1])
+        params = [p[:-2]+'(.|\n)*\[\](.|\n)*' for p in params if '[]' in p]
+    params_regex = '(.|\n)*,\s*'.join(params)
+
     function_name = function_name.split('__')[0].replace('_', ' ').replace(' 1','_')
     splitted_path = function_name.split(' ')
     #a = re.split('_[^0-9]', function_name)
     short_func_name = splitted_path[-1]
+    if params!='':
+        short_func_name+='(.|\n)*\((.|\n)*'+params_regex+'(.|\n)*\)'
     path = java_dir+'/'.join(splitted_path[1:-1])+'.java' #remove Java and func name
-
-
 
     if not os.path.isfile(path):
         print('NO FILE {0}!'.format(path))
@@ -48,7 +50,10 @@ def getJNIfunctionType(JNI_function_name):
         print('NONE DECLARATION in {0}'.format(path))
         return -1 #todo
     # все типы односложные, нет указателей
-    type = func_declaration.group().split(' ')[-2] #todo учесть указатели
+    type = func_declaration.group().split('(')[0] #убираем параметры
+    type = type.split(' ')[-2]
+    if type == '[]': #если в коде 'type []' (есть пробел)
+        type = type.split(' ')[-3] + type.split(' ')[-2]
     return type
 
 def getCFunctionType(func_name):
@@ -135,14 +140,10 @@ def getFunctionsReturnTypeSize(functions):
     c_found_funcs = findFunctionsInFiles(C_functions) #находим С-функции в h/c(pp) файлах
     for address, function in c_found_funcs.items():
         # убираем параметры
-        if address == '3c1968':
-            aaaa=1
         function_types[address] = getCFunctionType(function.split('(')[0])
 
     for address, func in function_types.items():
         if address not in return_sizes:
-            if address == '3c1968':
-                aaaa = 1
             return_sizes[address] = getTypeSize(func, False)
     print('4 bytes: ', len([f for f in return_sizes if return_sizes[f]==4]))
     print('2 bytes: ', len([f for f in return_sizes if return_sizes[f]==2]))
@@ -261,16 +262,15 @@ def findFunctionsInFiles(functions):
     return result
 
 
-
-
-
 def parseJavaFuncParams(params):
 
     signatures = {'Z':'boolean', 'B':'byte', 'C':'char', 'S':'short', 'I':'int',
                   'J':'long', 'F':'float', 'V':'void', 'D':'double'}
 
-    #todo think about _ in complex_type_name (e.g.java_lang_String)
-    complex_types = re.findall('L(?:[a-zA-Z0-9]*(?:_(?:0|1|3))*)*_2', params)
+    params = params.replace('_2', ',')
+    #complex_types = re.findall('L(?:[a-zA-Z0-9]*(?:_(?:0|1|3))*)*_2', params)
+    complex_types = re.findall('L[a-zA-Z0-9_]*,', params)
+
     replacer = dict()
     for index, type in enumerate(complex_types):
         replacer[type] = str(index)*len(type)
@@ -287,10 +287,14 @@ def parseJavaFuncParams(params):
         params = params.replace(replacer[type], type)
 
     #обрабатываем сложные типы
-    params = params.replace('L', '').replace('_2', ',').replace('_3', '[')
+    params = params.replace('L', '').replace('_3', '[')
     #заменяем уникоды
     unicode_chars = re.findall('_0[0-9]+', params)
     for c in unicode_chars:
         params = params.replace(c, chr(int(c[2:])))
 
-    return params[-1] #убираем последнюю запятую
+    params = params.replace('_','/').replace('_1', '_')
+    splitted_params = params[:-1].split(',') #убираем последнюю запятую
+
+    #оставляем только само имя класса
+    return  [p.split('/')[-1] for p in splitted_params]
