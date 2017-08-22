@@ -37,7 +37,8 @@ def run(path, start_group, end_group, DEBUG):
             address = utils.getAddressFromLine(line)
             code, is_thumb = utils.getCodeFromLine(line)
             stack_lines.append((address, code, method, registers[:-1], is_thumb, index, last_reg))
-            functions[address] = function_name.split('@')[0]
+            if re.search('pop(.w)?|ldmia(.w)?', method) is None:
+                functions[address] = function_name.split('@')[0]
             function_name = ''
         index += 1
 
