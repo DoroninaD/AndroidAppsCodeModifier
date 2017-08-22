@@ -5,6 +5,7 @@ java_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/java/' # todo set
 #jni_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/jni'
 #java_dir = '/home/daria/Documents/android-ndk-master/hello-libs/app/src/main/java/'
 jni_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/cpp/'
+jnih_path = '/home/daria/Android/Sdk/ndk-bundle/sysroot/usr/include/jni.h'
 
 # https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/design.html
 # http://docs.oracle.com/javase/specs/jls/se7/html/jls-4.html#jls-4.2
@@ -12,13 +13,15 @@ Java_types64 = ['long', 'double'] # 64 bits
 Java_types32 = ['int', 'byte', 'short', 'char', 'float', 'boolean'] #32 bits
 void_type = ['void']
 C_types32 = ['int32_t','int16_t', 'int8_t', 'int',
-             'float', 'char', 'bool', 'long int', 'wchar_t'] #unsigned не учитываем
+             'float', 'char', 'bool', 'long int', 'wchar_t',
+             'jbyte', 'jchar', 'jboolean', 'jshort', 'jint', 'jfloat'] #unsigned не учитываем
+jni_objects_types = ['jclass', 'jstring', 'jcharArray'] #todo add other Arrays
 C_types64 = ['long long', 'double', 'int64_t', 'jlong', 'jdouble']
 C_types128 = ['long double']
 JNI_types = ['']
 
 #for native functions declared in Java code
-def getJNIfunctionType(JNI_function_name):
+def getJavafunctionType(JNI_function_name):
     function_name = str(JNI_function_name)
     if not function_name.startswith('Java'):
         return -1 #Not right JNI function name
@@ -57,36 +60,16 @@ def getJNIfunctionType(JNI_function_name):
     return type
 
 def getCFunctionType(func_name):
-    #name = str(func_name)
-    #name_without_params = name.split('(')[0]
-    #print(name_without_params)
-    # if func_name.startswith('std::') or func_name.startswith('__gnu_cxx'):
-    #     return Noneunc
-    #found_func = findFInFiles(name_without_params)
     if func_name == '': # нет функции -> не можем определить тип ->None
         return None
     #jni типы не берем, потому что такие функции начинаются с _Java
-    pattern = C_types128 + C_types64 + C_types32 + void_type +['\*', '\[\]']
+    pattern = C_types128 + C_types64 + C_types32 + void_type +['\*', '\[\]'] + jni_objects_types
     type = re.search('({0})\s*\*?\s*'.format('|'.join(pattern)), func_name)
     # учесть указатели!
 
     if type is None: #функция есть, но тип не 128 и не 64 и не void -> 32
         return ''
-    if type.group() in ['*','[]']:
-        aaa=1
     return type.group().strip()
-
-#def getFunctionReturnTypeSize(function_name):
-
-    # if function_name == '':
-    #     return 4 #не знаем функцию -> максимальный размер
-    # name = str(function_name).split('@')[0]
-    # if name.startswith('Java'):
-    #     return getTypeSize(getJNIfunctionType(name), True)
-    # if name.startswith('_ZN') and not name.startswith('_ZNSt'):
-    #     name = cxxfilt.demangle(name)
-    # return(getTypeSize(getCFunctionType(name)))
-    #print("FOUND: {0} : {1}".format(name,findFuncInFiles(name)))
 
 def getTypeSize(type, isJNI):
     if type == None: # не нашли функцию -> может быть любой тип
@@ -95,7 +78,10 @@ def getTypeSize(type, isJNI):
       return 4
     if isJNI and type in Java_types64 or not isJNI and type in C_types64:
         return 2
-    if '*' in type or '[]' in type or isJNI and type in Java_types32 or not isJNI and type in C_types32:
+    if '*' in type or '[]' in type \
+            or isJNI and type in Java_types32 \
+            or not isJNI and type in C_types32\
+            or type in jni_objects_types:
         return 1
     # важно, что void после *, так как void* = 32 бита
     if type == 'void':
@@ -116,7 +102,7 @@ def getFunctionsReturnTypeSize(functions):
     for address, function in Java_functions.items():
         if 'int32' in function or 'int64' in function:
             br = 1
-        function_types[address] = getJNIfunctionType(function)
+        function_types[address] = getJavafunctionType(function)
 
     # отпределяем размер для JNI
     return_sizes = dict()
@@ -132,28 +118,45 @@ def getFunctionsReturnTypeSize(functions):
     for address, function in C_functions.items():
         if function.startswith('_Z'):
             n = cxxfilt.demangle(function)
-            if '(' in n and ('int32' in n.split('(')[0] or 'int64' in n.split('(')[0]):
-                br = 1
-            C_functions[address] = cxxfilt.demangle(function)
+            if n.startswith('_JNIEnv'):
+                n = n[9:]
+            C_functions[address] = n
+
+
+    # отдельно выносим функции из jni.h
+    jni_functions = dict((address, func[7:]) for address, func in C_functions.items() if func.startswith('_JNIEnv'))
+    #C_functions = dict((address, func) if address not in jni_functions)
 
     # ищем определение функций в файлах
     c_found_funcs = findFunctionsInFiles(C_functions) #находим С-функции в h/c(pp) файлах
     for address, function in c_found_funcs.items():
+        if address == '362c':
+            aaa = 1
         # убираем параметры
         function_types[address] = getCFunctionType(function.split('(')[0])
 
+    #обрабатывым функции из jni.h
+
+
     for address, func in function_types.items():
         if address not in return_sizes:
+            if address == '362c':
+                aaa=1
             return_sizes[address] = getTypeSize(func, False)
     print('4 bytes: ', len([f for f in return_sizes if return_sizes[f]==4]))
     print('2 bytes: ', len([f for f in return_sizes if return_sizes[f]==2]))
     print('1 bytes: ', len([f for f in return_sizes if return_sizes[f]==1]))
     print('0 bytes: ', len([f for f in return_sizes if return_sizes[f]==0]))
-    #print(','.join([f for f in return_sizes if return_sizes[f]==0]))
 
-    notfound = [backup[f] for f in return_sizes if return_sizes[f]==4]
+    notfound = dict((f, backup[f]) for f in return_sizes if return_sizes[f]==4)
     return return_sizes
 
+# def getJNIFunctionsTypes(functions):
+#     with codecs.open(jnih_path, "r", encoding='utf-8', errors='ignore') as f:
+#         data = f.read()
+#         for func in functions:
+#             func_declaration = re.search('native .* {0}'.format(func), data)
+#
 
 
 def searchInFile(patterns_dict,func_dict, file):
@@ -177,14 +180,16 @@ types_equals = {'uint32': 'unsigned int',
                 'int64_t': 'long long'
                 }
 
-types_patterns = {'int':'(int32(_t)?)|(j?int)',
+types_patterns = {'int':'(int32(_t)?)|(j?int)|(j?size)',
                   'unsigned int':'uint32(_t)?',
                   'long long': '(int64(_t)?)|(j?long( long)?)',
                   'unsigned long long': 'uint64(_t)?',
                   'unsigned char': 'jboolean|(uint8(_t)?)|bool',
                   'signed char': '(j?byte)|int8(_t)?',
                   'short': '(j?short)|int16(_t)?',
-                  'float': 'j?float'
+                  'float': 'j?float',
+                  'unsigned short': 'jchar',
+                  'double': 'jdouble',
                   }
 
 #открываем файл, ищем все функции
@@ -200,25 +205,31 @@ def findFunctionsInFiles(functions):
         #params_regex = '(.|\n)*'
         #params_regex = '[^;\)]*
         params_regex = '[^;]*'
+        if address == '362c':
+            aaa=1
         if params is not None: # есть параметры
             params_list = params.group()[1:-1].split(',')
             #tmp = params_list.copy()
             for i in range(len(params_list)):
                 p = params_list[i].strip()
+                p = p.replace(' const', '') # const меняет место, уберем его
                 if p.startswith('_j') and p[-1]=='*': #_jobject*->jobject
                     p = p[1:-1]
                 if p.startswith('_J'):
                     p = p[1:]
-                non_escaped = p.strip('&').strip('*') #запоминаем nonescaped параметры
+                non_escaped = p.strip('&').strip('*').strip(' ') #запоминаем nonescaped параметры
                 p = re.escape(p) #escape
                 #todo unsigned int -> unsigned// int
                 if non_escaped in types_patterns:
                     p = p.replace(p, types_patterns[non_escaped])
                 #p = '\s*j?'+p #для jni
-                p = '(' + p + ')'
+                #todo make this regexp more effetive!!!
+                p = '(\\s*(const)?\\s*' + p + '\\s*(const)?\\s*)'
                 params_list[i] = p.replace('\\*', '\\s*\\*\\s*').replace('\\&', '\\s*\\&\\s*')
 
-            params_regex = '.*,\\s*'.join(params_list) #todo escape?
+            #params_regex = '(.|\n)*,(const)?\\s*(const)?'.join(params_list) #todo escape?
+            params_regex = '(.|\n)*\\s*'.join(params_list) #todo escape?
+
             # для jni и void* -> void *
             params_regex= params_regex\
                 .replace('_J', 'J').replace('_j', 'j')
@@ -228,7 +239,7 @@ def findFunctionsInFiles(functions):
         #                             .format(re.escape(func.split('(')[0]), params_regex)
         #                             +'{0,};', re.MULTILINE)
 
-        result_pattern = re.compile('\n\s*([a-zA-Z0-9_"\*\[\]]+\s+){0,3}'
+        result_pattern = re.compile('\n\s*([a-zA-Z0-9_\"\*\[\]]+\s+){0,3}'
                                     +'\*?{0}\s*\({1}.*\)(\s[a-zA_Z_]+)?\s'
                                     .format(re.escape(func.split('(')[0]), params_regex)
                                     +'*(;|{)', re.MULTILINE)
