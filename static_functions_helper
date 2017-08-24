@@ -1,0 +1,54 @@
+import re, utils
+
+#1. Cоздать {name}_nonstatic.txt - руками или сгенерить
+
+#file = {name}.txt - открытый
+#address = адрес push, у которого нет имени
+
+def getName(static_file_lines, nonstatic_file, address):
+    # Найти, где в исходном файле вызывается, т.е. bl|b|bx address
+    line_where_called, line_index = searchInLines('(bl)|b|(bx)\s*'+address, static_file_lines)
+    if line_where_called is None:
+        raise Exception('{0} is not called in static {1}'.format(address, nonstatic_file))
+    a1 = utils.getAddressFromLine(line_where_called) #адрес, где вызывается функций
+    #ищем начало функции - идем вверх по Lines, пока не встретим push
+    while True:
+        line_index -= 1
+        result = re.search('push|stmdb', static_file_lines[line_index])
+        if result is not None:
+            break
+    a2 = utils.getAddressFromLine(static_file_lines[line_index])
+    #теперь в a2 лежит индекс начала функции
+    #todo parse strings to ints
+    delta = hexstringToInt(a1) - hexstringToInt(a2) # смещение вызова искомой функции относительно начала той, в которой вызывается
+    # определяем имя функции по адресу a2
+    function_name = re.search('<.*>:', static_file_lines[line_index])
+
+    #открываем nonstatic_file, ищем начало функции function_name
+    with open(nonstatic_file) as f:
+        data = f.readlines()
+        result, index = searchInLines('<{0}.*>:'.format(function_name), data)
+        if result is None:
+            raise Exception('{0} is not called in nonstatic {1}'.format(address, nonstatic_file))
+        b1 = utils.getAddressFromLine(data[index]) # адрес начала функции function_name
+        b2 = hexstringToInt(b1) + delta # адрес, где вызывается искомая функция
+        # ищем строку в data, у которой этот адрес
+        row, ind = searchInLines('.*{0}.*'.format(b2), data)
+        if row is None:
+            raise Exception('{0} address is not found in nonstatic {1}'.format(b2, nonstatic_file))
+        row  = data[ind]
+        found_name = re.search('<.*>', row)
+        if found_name is None:
+            raise Exception('No func name at {0} in {1}', b2, nonstatic_file)
+        return found_name
+
+def searchInLines(regex, lines):
+    for index, line in enumerate(lines):
+        result = re.search(regex, line)
+        if result is not None:
+            return result.group(), index
+    return None, -1
+
+def hexstringToInt(str):
+    return int('0x'+str)
+
