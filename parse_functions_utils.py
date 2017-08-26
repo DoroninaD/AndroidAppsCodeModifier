@@ -1,18 +1,20 @@
-import re, os.path, cxxfilt, glob, codecs
+import re, os.path, cxxfilt, glob, codecs, config_parser
 from timeit import timeit
-java_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/java/' # todo set directory for java
-#java_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/src/main/java/'
-#jni_dir = '/home/daria/Downloads/Telegram-FOSS-master/TMessagesProj/jni'
-#java_dir = '/home/daria/Documents/android-ndk-master/hello-libs/app/src/main/java/'
-jni_dir = '/home/daria/Desktop/hello-libs (copy)/app/src/main/cpp/'
-jnih_path = '/home/daria/Android/Sdk/ndk-bundle/sysroot/usr/include/jni.h'
+
+configParser = config_parser.ConfigParser()
+
+java_dir = configParser.get('java_directory') # todo set directory for java
+jni_dir = configParser.get('native_directory')
+#jnih_path = '/home/daria/Android/Sdk/ndk-bundle/sysroot/usr/include/jni.h'
+system_paths = configParser.getSection('system_directories')
+
 
 # https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/design.html
 # http://docs.oracle.com/javase/specs/jls/se7/html/jls-4.html#jls-4.2
 Java_types64 = ['long', 'double'] # 64 bits
 Java_types32 = ['int', 'byte', 'short', 'char', 'float', 'boolean'] #32 bits
 void_type = ['void']
-C_types32 = ['int32_t','int16_t', 'int8_t', 'int',
+C_types32 = ['int32_t','int16_t', 'int8_t', 'int', 'unsigned',
              'float', 'char', 'bool', 'long int', 'wchar_t',
              'jbyte', 'jchar', 'jboolean', 'jshort', 'jint', 'jfloat'] #unsigned не учитываем
 jni_objects_types = ['jclass', 'jstring', 'jcharArray'] #todo add other Arrays
@@ -269,6 +271,10 @@ def findFunctionsInFiles(functions):
     #result.clear()
     #
     patterns  = find(jni_dir+'/**/*.c*')
+    for p in system_paths:
+        patterns = find(p+'/**/*.h')
+        patterns = find(p+'/**/*.c')
+        patterns = find(p+'/**/*.cpp')
 
     return result
 
