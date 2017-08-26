@@ -17,4 +17,8 @@ class ConfigParser:
         list = self.config.items(section)
         return [item[1] for item in list]
 
+    def getLibSourceFiles(self, lib):
+        files = self.config.get('libraries', lib)
+        return files.replace(' ', '').split(',')
+
 

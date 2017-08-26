@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import re, utils, arm_translate, parse,parse_functions_utils
+import re, utils, arm_translate, parse,parse_functions_utils, static_functions_helper, config_parser, os
 
 
 
@@ -10,6 +10,8 @@ def run(path, start_group, end_group, DEBUG):
     indices = [i for i, s in enumerate(lines) if '.text' in s]
     lines = lines[indices[0]:]
     f.close()
+
+    config = config_parser.ConfigParser()
 
     stack_lines = []
 
@@ -41,6 +43,16 @@ def run(path, start_group, end_group, DEBUG):
                 functions[address] = function_name.split('@')[0]
             function_name = ''
         index += 1
+
+    # выделяем функции, для которых нет имени
+    noname_functions = dict((addr, func) for addr, func in functions.items() if func == '')
+    if len(noname_functions) > 0:
+        nonstatic_sources = static_functions_helper.getNonStaticSources(config, path)
+        for addr, func in noname_functions:
+            name = static_functions_helper.getName(lines, addr, nonstatic_sources)
+            noname_functions[addr] = name
+
+    #теперь все статики должны быть найдены, можно удалить static файлы todo
 
     #находим тип функций
     function_types = []
