@@ -19,6 +19,8 @@ class ConfigParser:
 
     def getLibSourceFiles(self, lib):
         files = self.config.get('libraries', lib)
+        if files == 'None':
+            return []
         return files.replace(' ', '').split(',')
 
 

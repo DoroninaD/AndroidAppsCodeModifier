@@ -47,10 +47,31 @@ def run(path, start_group, end_group, DEBUG):
     # выделяем функции, для которых нет имени
     noname_functions = dict((addr, func) for addr, func in functions.items() if func == '')
     if len(noname_functions) > 0:
-        nonstatic_sources = static_functions_helper.getNonStaticSources(config, path)
-        for addr, func in noname_functions:
-            name = static_functions_helper.getName(lines, addr, nonstatic_sources)
+        nonstatic_folder = config.get('nonstatic_app_directory')
+        nonstatic_file = os.path.join(nonstatic_folder, os.path.basename(path)+'.txt')
+        for addr in noname_functions:
+            #if addr == '1e3c':
+            if addr == '678':
+                aaa=1
+            name = static_functions_helper.getName(lines, addr, nonstatic_file, dict())
             noname_functions[addr] = name
+
+    #todo more recursive
+    newNames = dict((addr, func) for addr, func in noname_functions.items() if func!='')
+
+    for addr in noname_functions:
+        if noname_functions[addr] == '':
+            name = static_functions_helper.getName(lines, addr, nonstatic_file, newNames)
+            noname_functions[addr] = name
+
+
+    # if len(noname_functions) > 0:
+    #     nonstatic_sources = static_functions_helper.getNonStaticSources\
+    #         (config, os.path.basename(path))
+    #     if nonstatic_sources is not None:
+    #         for addr, func in noname_functions.items():
+    #             name = static_functions_helper.getName(lines, addr, nonstatic_sources)
+    #             noname_functions[addr] = name
 
     #теперь все статики должны быть найдены, можно удалить static файлы todo
 
