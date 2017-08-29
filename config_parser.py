@@ -1,6 +1,6 @@
 import configparser, os
 
-config_path = 'config.ini'
+config_path = os.path.join(os.path.dirname(__file__),'config.ini')
 
 class ConfigParser:
 
