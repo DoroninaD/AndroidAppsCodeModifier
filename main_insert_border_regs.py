@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re, utils, arm_translate, parse,parse_functions_utils, static_functions_helper, config_parser, os
-
+import cxxfilt
 
 
 def run(path, start_group, end_group, DEBUG):
@@ -118,14 +118,11 @@ def run(path, start_group, end_group, DEBUG):
     full_registers_count = 0
     #1935-36
     print(start_group, ":", end_group)
+
+    regs_added = 0
     for group in groups[start_group:end_group]: # 66 libcrypto - pop lr => bl - перезапись регистров
         first, last = group[0], group[-1]
-        #print(first)
-        #return_size = function_types[first[0]]
-        #print(return_size)
-        #print(parse_functions_utils.getFunctionReturnTypeSize(first[-1]))
-        #print(last[0])
-        #print(first, last)
+        addr = first[0]
         l+=1
         big_regs = ['sp', 'ip', 'lr', 'pc', 'r12']
         if any(big_regs[i] in first[3] for i in range(len(big_regs))): #and (str(first[2]).startswith('push') or str(first[2]).startswith('stm')):
@@ -133,11 +130,7 @@ def run(path, start_group, end_group, DEBUG):
 
         # добавляем регистры в начало, считает их количество
         real_reg_count = len(first[3])
-        #return_size = 0 if first[0]=='14e3b4' else 4
-        return_size = function_types[first[0]] if DEBUG else 4
-        #return_size=4
-        if return_size == 0:
-            print('0')
+        return_size = function_types[addr] if DEBUG else 4
         new_registers, table = utils.addRegistersToStartAndEnd(first[3], first[1], return_size)
         if new_registers == -1:
             full_registers_count+=1
@@ -159,14 +152,14 @@ def run(path, start_group, end_group, DEBUG):
                             utils.toLittleEndian(
                                 arm_translate.pushpopToCode(new_registers, a[1], a[4], real_reg_count, True))))  # добавляем новый pop
 
-
-        #print("POP AT:", last[0])
-        #for i in inner_lines:
-            #print(i)
         if len(inner_lines) > 0:
             to_write.extend(inner_lines)
+        print('{0}: old {1}, new {2}'.format(cxxfilt.demangle(functions[addr]),first[3], new_registers))
+        regs_added += len(new_registers) - len(first[3])
+    secured = groups_count/len(groups)*100
+    print('\033[92m'+'End:{0}, full regs:{1}, secured:{2}%, average randomness:{3}\033[0m'
+          .format(groups_count, full_registers_count, secured, regs_added/groups_count))
 
-    print('End: ', groups_count, 'full registers: ', full_registers_count)
     #переписываем файл
     f = open(path+'_old.so', 'br')
     text = f.read()
