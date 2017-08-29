@@ -39,7 +39,8 @@ def getName(static_file_lines, address, nonstatic_file, newNames):
         newname_address = utils.getAddressFromLine(static_file_lines[index])
         if newname_address not in newNames:
             return ''
-        function_name = re.sub('plt','@Base',newNames[newname_address])+':'
+        #function_name = re.sub('plt','@Base',newNames[newname_address])+':'
+        function_name = '<{0}@@Base>:'.format(newNames[newname_address])
     else:
         function_name = function_name.group()
 
@@ -78,7 +79,9 @@ def getName(static_file_lines, address, nonstatic_file, newNames):
         if found_name is None:
             #raise Exception('No func name at {0} in {1}', b2, nonstatic_file)
             return ''
-        return found_name.group()
+        if re.search('(:?@@Base|@plt)>',found_name.group()) is None:
+            return ''
+        return found_name.group().split('@')[0][1:]
 
 def searchInLines(regex, lines):
     for index, line in enumerate(lines):
