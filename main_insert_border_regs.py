@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re, utils, arm_translate, parse,parse_functions_utils, static_functions_helper, config_parser, os
-import cxxfilt
+import cxxfilt, colored
 
 
 def run(path, start_group, end_group, DEBUG):
@@ -154,11 +154,13 @@ def run(path, start_group, end_group, DEBUG):
 
         if len(inner_lines) > 0:
             to_write.extend(inner_lines)
-        print('{0}: old {1}, new {2}'.format(cxxfilt.demangle(functions[addr]),first[3], new_registers))
+        print(colored.setColored('{0}: '.format(cxxfilt.demangle(functions[addr])), colored.OKGREEN) + 'old {0}, new {1}'.format(first[3], new_registers))
         regs_added += len(new_registers) - len(first[3])
     secured = groups_count/len(groups)*100
-    print('\033[92m'+'End:{0}, full regs:{1}, secured:{2}%, average randomness:{3}\033[0m'
-          .format(groups_count, full_registers_count, secured, regs_added/groups_count))
+    output = 'End:{0}, full regs:{1}, secured:{2}%, average randomness:{3}'\
+        .format(groups_count, full_registers_count, secured, regs_added/groups_count)
+
+    colored.printColored(output, colored.BOLD)
 
     #переписываем файл
     f = open(path+'_old.so', 'br')
