@@ -110,7 +110,7 @@ def getRandomNumberOfItems(start, end):
 
 
 def getAddressFromLine(line):
-    return line.split(':')[0].replace(' ', '')
+    return line.split(':')[0].split('<')[0].replace(' ', '')
 
 def getCodeFromLine(line):
     code = str(line.split('\t')[1].replace('\t', '')).strip()

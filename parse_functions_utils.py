@@ -1,12 +1,8 @@
 import re, os.path, cxxfilt, glob, codecs, config_parser
 from timeit import timeit
 
-configParser = config_parser.ConfigParser()
 
-java_dir = configParser.get('java_directory') # todo set directory for java
-jni_dir = configParser.get('native_directory')
-#jnih_path = '/home/daria/Android/Sdk/ndk-bundle/sysroot/usr/include/jni.h'
-system_paths = configParser.getSection('system_directories')
+
 
 
 # https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/design.html
@@ -16,11 +12,21 @@ Java_types32 = ['int', 'byte', 'short', 'char', 'float', 'boolean'] #32 bits
 void_type = ['void']
 C_types32 = ['int32_t','int16_t', 'int8_t', 'int', 'unsigned',
              'float', 'char', 'bool', 'long int', 'wchar_t',
-             'jbyte', 'jchar', 'jboolean', 'jshort', 'jint', 'jfloat'] #unsigned не учитываем
+             'jbyte', 'jchar', 'jboolean', 'jshort', 'jint', 'jfloat', 'size_t'] #unsigned не учитываем
 jni_objects_types = ['jclass', 'jstring', 'jcharArray'] #todo add other Arrays
 C_types64 = ['long long', 'double', 'int64_t', 'jlong', 'jdouble']
 C_types128 = ['long double']
 JNI_types = ['']
+
+def init_config(config):
+    global java_dir
+    global jni_dir
+    global system_paths
+    configParser = config
+    java_dir = configParser.get('java_directory')  # todo set directory for java
+    jni_dir = configParser.get('native_directory')
+    # jnih_path = '/home/daria/Android/Sdk/ndk-bundle/sysroot/usr/include/jni.h'
+    system_paths = configParser.getSection('system_directories')
 
 #for native functions declared in Java code
 def getJavafunctionType(JNI_function_name):
@@ -47,13 +53,13 @@ def getJavafunctionType(JNI_function_name):
 
     if not os.path.isfile(path):
         print('NO FILE {0}!'.format(path))
-        return -1 #todo
+        return None #todo
     with codecs.open(path, "r", encoding='utf-8', errors='ignore') as f:
         data = f.read()
         func_declaration = re.search('native .* {0}'.format(short_func_name), data)
     if func_declaration is None:
-        print('NONE DECLARATION in {0}'.format(path))
-        return -1 #todo
+        print('NONE DECLARATION in {0} for {1}'.format(path, short_func_name))
+        return None #todo
     # все типы односложные, нет указателей
     type = func_declaration.group().split('(')[0] #убираем параметры
     type = type.split(' ')[-2]
@@ -80,6 +86,8 @@ def getTypeSize(type, isJNI):
       return 4
     if isJNI and type in Java_types64 or not isJNI and type in C_types64:
         return 2
+    if type !='':
+        aaa = 1
     if '*' in type or '[]' in type \
             or isJNI and type in Java_types32 \
             or not isJNI and type in C_types32\
@@ -91,8 +99,8 @@ def getTypeSize(type, isJNI):
     return 4
 
 
-def getFunctionsReturnTypeSize(functions):
-
+def getFunctionsReturnTypeSize(functions, config):
+    init_config(config)
     #function_types = dict()
     function_types = dict.fromkeys(functions.keys(), '') #адрес - найденнная функция
 
@@ -118,11 +126,8 @@ def getFunctionsReturnTypeSize(functions):
 
     # demangle mangled functions
     for address, function in C_functions.items():
-        if function.startswith('_Z'):
-            n = cxxfilt.demangle(function)
-            if n.startswith('_JNIEnv'):
-                n = n[9:]
-            C_functions[address] = n
+        C_functions[address] = demangleNativeFunctionName(function)
+
 
 
     # отдельно выносим функции из jni.h
@@ -142,23 +147,24 @@ def getFunctionsReturnTypeSize(functions):
 
     for address, func in function_types.items():
         if address not in return_sizes:
-            if address == '362c':
+            if func==-1:
                 aaa=1
             return_sizes[address] = getTypeSize(func, False)
-    print('4 bytes: ', len([f for f in return_sizes if return_sizes[f]==4]))
-    print('2 bytes: ', len([f for f in return_sizes if return_sizes[f]==2]))
-    print('1 bytes: ', len([f for f in return_sizes if return_sizes[f]==1]))
-    print('0 bytes: ', len([f for f in return_sizes if return_sizes[f]==0]))
+    # print('4 bytes: ', len([f for f in return_sizes if return_sizes[f]==4]))
+    # print('2 bytes: ', len([f for f in return_sizes if return_sizes[f]==2]))
+    # print('1 bytes: ', len([f for f in return_sizes if return_sizes[f]==1]))
+    # print('0 bytes: ', len([f for f in return_sizes if return_sizes[f]==0]))
 
     notfound = dict((f, backup[f]) for f in return_sizes if return_sizes[f]==4)
     return return_sizes
 
-# def getJNIFunctionsTypes(functions):
-#     with codecs.open(jnih_path, "r", encoding='utf-8', errors='ignore') as f:
-#         data = f.read()
-#         for func in functions:
-#             func_declaration = re.search('native .* {0}'.format(func), data)
-#
+def demangleNativeFunctionName(function):
+    # demangle mangled functions
+    if function.startswith('_Z'):
+        function = cxxfilt.demangle(function)
+        if function.startswith('_JNIEnv'):
+            function = function[9:]
+    return function
 
 
 def searchInFile(patterns_dict,func_dict, file):
@@ -194,6 +200,47 @@ types_patterns = {'int':'(int32(_t)?)|(j?int)|(j?size)',
                   'double': 'jdouble',
                   }
 
+
+#pattern for C/C++ functions
+#for jni functions in native code no need to think about params (they are in the name already)
+def makePattern(func):
+    params = re.search('\((.|\n)*\)', func)
+    params_regex = '[^;]*'
+    if params is not None:  # есть параметры
+        params_list = params.group()[1:-1].split(',')
+        # tmp = params_list.copy()
+        for i in range(len(params_list)):
+            p = params_list[i].strip()
+            p = p.replace(' const', '')  # const меняет место, уберем его
+            if p.startswith('_j') and p[-1] == '*':  # _jobject*->jobject
+                p = p[1:-1]
+            if p.startswith('_J'):
+                p = p[1:]
+            non_escaped = p.strip('&').strip('*').strip(' ')  # запоминаем nonescaped параметры
+            p = re.escape(p)  # escape
+            # todo unsigned int -> unsigned// int
+            if non_escaped in types_patterns:
+                p = p.replace(p, types_patterns[non_escaped])
+            # p = '\s*j?'+p #для jni
+            # todo make this regexp more effetive!!!
+            p = '(\\s*(const)?\\s*' + p + '\\s*(const)?\\s*)'
+            params_list[i] = p.replace('\\*', '\\s*\\*\\s*').replace('\\&', '\\s*\\&\\s*')
+
+        # params_regex = '(.|\n)*,(const)?\\s*(const)?'.join(params_list) #todo escape?
+        params_regex = '(.|\n)*\\s*'.join(params_list)  # todo escape?
+
+        # для jni и void* -> void *
+        params_regex = params_regex \
+            .replace('_J', 'J').replace('_j', 'j')
+
+    result_pattern = re.compile('\n\s*([a-zA-Z0-9_\"\*\[\]]+\s+){0,3}'
+                                + '\*?{0}\s*\({1}.*\)(\s[a-zA_Z_]+)?\s'
+                                .format(re.escape(func.split('(')[0]), params_regex)
+                                + '*(;|{)', re.MULTILINE)
+    return result_pattern
+
+
+
 #открываем файл, ищем все функции
 def findFunctionsInFiles(functions):
     # functions = address:functions
@@ -203,50 +250,7 @@ def findFunctionsInFiles(functions):
     patterns = dict()
     #выделяем типы входных параметров
     for address, func in functions.items():
-        params = re.search('\((.|\n)*\)', func)
-        #params_regex = '(.|\n)*'
-        #params_regex = '[^;\)]*
-        params_regex = '[^;]*'
-        if address == '362c':
-            aaa=1
-        if params is not None: # есть параметры
-            params_list = params.group()[1:-1].split(',')
-            #tmp = params_list.copy()
-            for i in range(len(params_list)):
-                p = params_list[i].strip()
-                p = p.replace(' const', '') # const меняет место, уберем его
-                if p.startswith('_j') and p[-1]=='*': #_jobject*->jobject
-                    p = p[1:-1]
-                if p.startswith('_J'):
-                    p = p[1:]
-                non_escaped = p.strip('&').strip('*').strip(' ') #запоминаем nonescaped параметры
-                p = re.escape(p) #escape
-                #todo unsigned int -> unsigned// int
-                if non_escaped in types_patterns:
-                    p = p.replace(p, types_patterns[non_escaped])
-                #p = '\s*j?'+p #для jni
-                #todo make this regexp more effetive!!!
-                p = '(\\s*(const)?\\s*' + p + '\\s*(const)?\\s*)'
-                params_list[i] = p.replace('\\*', '\\s*\\*\\s*').replace('\\&', '\\s*\\&\\s*')
-
-            #params_regex = '(.|\n)*,(const)?\\s*(const)?'.join(params_list) #todo escape?
-            params_regex = '(.|\n)*\\s*'.join(params_list) #todo escape?
-
-            # для jni и void* -> void *
-            params_regex= params_regex\
-                .replace('_J', 'J').replace('_j', 'j')
-
-        # result_pattern = re.compile('\n.*([a-zA-Z0-9_\*]+\s){0,3}'
-        #                             +'\*?{0}\({1}\)(\s[a-zA_Z_]+)?\s'
-        #                             .format(re.escape(func.split('(')[0]), params_regex)
-        #                             +'{0,};', re.MULTILINE)
-
-        result_pattern = re.compile('\n\s*([a-zA-Z0-9_\"\*\[\]]+\s+){0,3}'
-                                    +'\*?{0}\s*\({1}.*\)(\s[a-zA_Z_]+)?\s'
-                                    .format(re.escape(func.split('(')[0]), params_regex)
-                                    +'*(;|{)', re.MULTILINE)
-
-
+        result_pattern = makePattern(func)
         patterns[address] = result_pattern
 
     #patterns = dict((address, '\n.*{0}(.*);'.format(re.escape(func)))

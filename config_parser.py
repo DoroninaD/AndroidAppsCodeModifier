@@ -1,14 +1,15 @@
 import configparser, os
 
-config_path = os.path.join(os.path.dirname(__file__),'config.ini')
+#config_path = os.path.join(os.path.dirname(__file__),'config.ini')
 
 class ConfigParser:
 
-    def __init__(self):
-        if not os.path.isfile(config_path):
-            raise Exception('No config.ini at {0}!'.format(config_path))
+    def __init__(self, path):
+        self.config_path = path
+        if not os.path.isfile(self.config_path):
+            raise Exception('No config.ini at {0}!'.format(self.config_path))
         self.config = configparser.ConfigParser()
-        self.config.read(config_path)
+        self.config.read(self.config_path)
 
     def get(self, property):
         return self.config.get('app_source',property)
