@@ -53,7 +53,7 @@ def code(old_code, mask, s, is_thumb):
     return c[4:] + c[:4]
 
 def makeLdrOrStrInner(old_instr, old_code, rx, ry, a, is_thumb, l):  # ldr rx, [ry + a]
-
+    old_instr = old_instr.lower()
     s = a
     # 11-0
     if old_instr.endswith('.w') \

@@ -114,10 +114,11 @@ def getAddressFromLine(line):
 
 def getCodeFromLine(line):
     code = str(line.split('\t')[1].replace('\t', '')).strip()
-    if len(code)!=4 and len(code)!=9:
-        i = 1
     return code.replace(' ', ''), len(code) in [4, 9]
 
 
 def searchRe(regex, lines):
     return list(filter(None, [re.search(regex, line) for line in lines]))
+
+def searchPattern(pattern, lines):
+    return list(filter(None, [pattern.search(line) for line in lines]))
