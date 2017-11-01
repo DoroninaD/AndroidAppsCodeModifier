@@ -1,12 +1,12 @@
 from os import listdir
 from os.path import isfile, join
-import main_insert_border_regs, sys, colored, config_parser
+import main_insert_border_regs, sys, colored, config_parser, main_switcher
 
 #path = 'data/com.instagram.android/lib/armeabi-v7a/'
 #path = 'data/noassertTel/lib/armeabi-v7a/'
 #path = 'apps/telegram/lib/armeabi-v7a/'
 #harded_path = 'apps/app-debug/lib/armeabi-v7a/'
-harded_path = 'apps/curl/lib/armeabi-v7a/'
+harded_path = 'apps/files/lib/armeabi-v7a/'
 DEBUG=1
 path = sys.argv[1] if len(sys.argv) > 1 else harded_path
 config_path = sys.argv[2] if len(sys.argv)>2 else 'config.ini'
@@ -33,6 +33,5 @@ for file in files:
     #     start_group = 0
     #     end_group = 1
 
-
     colored.printColored (file[:-7], colored.HEADER)
-    main_insert_border_regs.run(join(path, file)[:-7], int(start_group), int(end_group), DEBUG, config)
+    main_switcher.run(join(path, file)[:-7], int(start_group), int(end_group), DEBUG, config)

@@ -58,5 +58,12 @@ def handleExternalJumps(groups, conditions, funcAddrDict):
         return IdaHelper.hadleExternalJumps(groups, conditions,funcAddrDict)
 
 
+def handlePopLr(group, conditions, retSize):
+    if isIDA:
+        regs= IdaHelper.handlePopLr(group, conditions)
+        #print(','.join(regs))
+        return regs
+
+
 
 

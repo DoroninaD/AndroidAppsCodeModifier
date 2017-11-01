@@ -171,18 +171,15 @@ def getVars(lines):
         varsDict[(addr, name)] = value
 
 
-
-
-
 def hadleExternalJumps(groups, conditions, funcAddrDict):
     have_external_jumps = {}
     ext_jumps_list = {}
     external_jumps = []
-
+    have_not_defined_jumps = []
 
     # убираем b, которые внутри функции
     for index, group in enumerate(groups):
-        containsJumpsPattern = re.compile('\sb('+'|'.join(conditions)+')\s',re.IGNORECASE)
+        containsJumpsPattern = re.compile('\sb('+'|'.join(conditions)+')?(\.w)?\s',re.IGNORECASE)
         #clear = [not group[i][2].startswith('b') for i in range(len(group)) if len(group[i]) > 2]
         containsJumps = searchInLines(containsJumpsPattern, group)
         #if all([not containsJumpsPattern.search(g.line) for g in group]):
@@ -204,10 +201,14 @@ def hadleExternalJumps(groups, conditions, funcAddrDict):
                 #     last_addr = int(groups[index+1][0][0],16)
                 #addr = int(g.addr,16)
                 addr = g.line[containsJumpsPattern.search(g.line).end():].strip().split(';')[0]
-                if addr in funcAddrDict:
+                if addr in funcAddrDict: #а что если функция внешняя?
                     addr = funcAddrDict[addr]
                 addr = re.sub('[a-z]+_','0x',addr)
-                addr = int(addr, 16)
+                try:
+                    addr = int(addr, 16)
+                except:
+                    have_not_defined_jumps.append(group)
+                    break
                 #addr = int(addr.replace('[a-z]+_','0x'), 16)
                 if addr < first_addr or addr > last_addr:
                     has_ext_jumps = True
@@ -285,8 +286,8 @@ def hadleExternalJumps(groups, conditions, funcAddrDict):
         for jump in external_jumps_res:
             if f==jumpFunc[jump]:
                 nojumps = False
-        if nojumps:
-            groups.append(index)
+        if nojumps and f not in have_not_defined_jumps:
+            groups.append(f)
     return groups
 
 
@@ -305,6 +306,72 @@ def hadleExternalJumps(groups, conditions, funcAddrDict):
     #         group = [g for g in group if not g[2].startswith('b')]
     #         groups.append(group)
     # return groups
+
+
+def handlePopLr(group, conditions):
+    pattern = re.compile('(pop|ldmfd).*,\s*lr}',re.IGNORECASE)
+    popLr =  searchInLines(pattern,group)
+    if len(popLr) == 0:
+        return []
+    popLrIndex = group.index(popLr[0])
+    conditions = '|'.join(conditions)
+    notUseRegs = []
+
+    # jumpsWithoutReturn = re.compile('\sb({0})?(\.w)?\s+'.format(conditions),re.IGNORECASE)
+    # if len(searchInLines(jumpsWithoutReturn, group)) > 0:
+    #     return ['-1']
+    # действие до конца функции, т.к. может прыгнуть куда-нибудь вниз (вверх не должна)
+    # смотрим, есть ли вызов функций
+    # простые прыжки (b) уже убрали, смотрим на bl
+    jumpsPattern = re.compile('\sbl?({0})?(\.w)?\s+'.format(conditions),re.IGNORECASE)
+    jumps = searchInLines(jumpsPattern, group[popLrIndex+1:])
+    #если есть вызов других функций, то r0-r3 затирать нельзя,
+    # т.к. они могут быть переданы как входные
+    if len(jumps) > 0:
+        notUseRegs.extend(['r0','r1','r2','r3'])
+
+    # смотрим, значения каких функций могут быть переданы в r0-r3
+    # ищем просто все регистры, которые задают где-то значения - до вызова последней функции
+    #lastFuncIndex = group.index(jumpsWithReturn[-1])
+    restOfTheGroup = group[popLrIndex+1:]
+
+    changePattern = re.compile('\s(mov|mvn|sub|add)s?({0})?\s+r[0-9]+(,\s?r[0-9]+)+'
+                               .format(conditions), re.IGNORECASE)
+    changeRegsLines = searchPatterns(changePattern, restOfTheGroup)
+    for l in changeRegsLines:
+        #print(l.group())
+        regs = l.group().replace(' ','').lower().split(',')[1:]
+        notUseRegs.extend([r.strip() for r in regs])
+
+    regPattern = re.compile('r[0-9]+',re.IGNORECASE)
+    ldrPattern = re.compile('\s(ldr|str|cbn?z)({0})?\s'.format(conditions), re.IGNORECASE)
+    ldrRegLines = searchInLines(ldrPattern, restOfTheGroup)
+    for l in ldrRegLines:
+        #print(l.line)
+        regs = regPattern.findall(l.line.lower().replace(' ','').strip())
+        if 'ldr' in l.line:
+            regs = regs[1:]
+        notUseRegs.extend([r.strip() for r in regs])
+
+    cmpPattern = re.compile('\scmp({0})?.*\s'.format(conditions),re.IGNORECASE)
+    cmpLines = searchInLines(cmpPattern, restOfTheGroup)
+    for l in cmpLines:
+        #print(l.line)
+        regs = re.findall('r[0-9]+',l.line.lower(),re.IGNORECASE)
+        notUseRegs.extend([r.strip() for r in regs])
+
+    bxRegPattern = re.compile('\sbx\s+r[0-9]+\s',re.IGNORECASE)
+    bxRegLines = searchPatterns(bxRegPattern, restOfTheGroup)
+    for l in bxRegLines:
+        #print(l.group())
+        notUseRegs.append(re.search('r[0-9]+',l.group(),re.IGNORECASE).group().lower().strip())
+    #print(','.join(notUseRegs))
+    return sorted(set(notUseRegs),key = lambda x: int(x[1:]))
+
+
+
+
+
 
 
 

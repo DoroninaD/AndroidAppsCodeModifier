@@ -7,28 +7,26 @@ conditions = ['eq','ne','cs','hs','cc','lo','mi','pl','vs','vc','hi','ls','ge','
 conditions_pattern = '|'.join(conditions)
 
 NEW = True
-RETURN_TYPES = False
+RETURN_TYPES = True
 
-def findSpSubbed(groups):
-    containSpSubbedPattern = re.compile('\ssub\s+sp,',re.IGNORECASE)
+# def findSpSubbed(groups):
+#     containSpSubbedPattern = re.compile('\ssub\s+sp,',re.IGNORECASE)
+#     matching_groups = []
+#     for group in groups:
+#         matches = switcher.searchInLines(containSpSubbedPattern,group)
+#         if len(matches)>0:
+#             matching_groups.append(group)
+#     return matching_groups
+
+
+def findInGroups(pattern,groups):
+    #containSpSubbedPattern = re.compile('bx\s+lr',re.IGNORECASE)
     matching_groups = []
     for group in groups:
-        matches = switcher.searchInLines(containSpSubbedPattern,group)
+        matches = switcher.searchInLines(pattern,group)
         if len(matches)>0:
             matching_groups.append(group)
     return matching_groups
-
-
-def findBxLR(groups):
-    containSpSubbedPattern = re.compile('bx\s+lr',re.IGNORECASE)
-    matching_groups = []
-    for group in groups:
-        matches = switcher.searchInLines(containSpSubbedPattern,group)
-        if len(matches)>0:
-            matching_groups.append(group)
-    return matching_groups
-
-
 
 
 def run(path, start_group, end_group, DEBUG, config):
@@ -39,8 +37,8 @@ def run(path, start_group, end_group, DEBUG, config):
 
     groups, addrFuncDict = switcher.getFunctions(lines)
     funcAddrDict = dict(zip(addrFuncDict.values(),addrFuncDict.keys()))
-
-    g = switcher.handleExternalJumps(groups, conditions, funcAddrDict)
+    init_group_len = len(groups)
+    print('GROUPS:',  len(groups))
 
     #находим тип функций
     function_types = []
@@ -48,73 +46,29 @@ def run(path, start_group, end_group, DEBUG, config):
         print('FUNCTIONS')
         function_types = parse_functions_utils.getFunctionsReturnTypeSize(addrFuncDict, config)
     #todo использовать числа при рандомизации
-    # all_registers = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11']
 
-
-    #ищем push, записываем для него все pop с теми же регистрами, пока не встретим новый push
-    #или название функции <..>
-    i = 0
-    # groups = []
-    # lst = []
-    # while i < len(stack_lines)-1:
-    #     if len(stack_lines[i]) == 2:
-    #         #lst.append(stack_lines[i])
-    #         i+=1
-    #         continue
-    #     probably_push = str(stack_lines[i][2])
-    #     if probably_push.startswith('push') or probably_push.startswith('stmdb'):
-    #         #lst = [stack_lines[i]]
-    #         lst.append(stack_lines[i])
-    #         j = i + 1
-    #         while len(stack_lines[j]) > 2 \
-    #                 and (str(stack_lines[j][2]).startswith("b") or ((str(stack_lines[j][2]).startswith('pop') or str(stack_lines[j][2]).startswith('ldmia')) \
-    #                 and stack_lines[j][3] == stack_lines[i][3])):
-    #             lst.append(stack_lines[j])
-    #             j += 1
-    #             if j >= len(stack_lines):
-    #                 break
-    #         if j - i > 1:
-    #             groups.append(lst.copy())
-    #             lst.clear()
-    #         i = j
-    #         lst.clear()
-    #     else:
-    #         i += 1
-    init_group_len = len(groups)
-
-
-
-    containSpSubbed = findSpSubbed(groups)
+    containSpSubbed = findInGroups(re.compile('\ssub\s+sp,',re.IGNORECASE),groups)
     print('Groups with subbed sp:', len(containSpSubbed))
 
-    #difference = [g for g in groups if g not in f]
-
-    #groups = switcher.hadleExternalJumps(groups)
-
-    # фильтруем группы - убираем те, в которых последний pop нe pc
-    print ('GROUPS:',  len(groups))
-
-
-    print("Groups after jumps removing", len(groups))
-
-    # gr = groups
-    # groups = []
-    # for group in gr:
-    #     #if all(g[6]=='pc' for g in group[1:]):
-    #     #берем только те функции, в которых нет pop lr
-    #     #if len(group) > 1 and all(g[6]=='pc' for g in group[1:]):
-    #     if len(group) > 1:
-    #         groups.append(group)
-    #     #if group[-1][6] == 'pc':
-    #      #   groups.append(group)
-    containBXLRbefore = findBxLR(groups)
+    containBXLRbefore = findInGroups(re.compile('bx\s+lr',re.IGNORECASE),groups)
 
     # check only one push
     # the same regs for push and pops
     groups = list(filter(None,[switcher.checkSuitable(g) for g in groups]))
 
-    containBXLR = findBxLR(groups)
+
+    groups = switcher.handleExternalJumps(groups, conditions, funcAddrDict)
+    print("Groups after jumps removing", len(groups))
+
+    containBXLR = findInGroups(re.compile('bx\s+lr',re.IGNORECASE),groups)
     print('CONTAINS BX LR:',len(containBXLR))
+    containPOPLR = findInGroups(re.compile('(pop|ldmfd).*,lr}',re.IGNORECASE),groups)
+    print('CONTAINS POP LR:',len(containPOPLR))
+
+    restrictedRegsDict = dict((g[0].addr,switcher.handlePopLr(g, conditions,4)) for g in containPOPLR)
+    # for key, value in restrictedRegsDict.items():
+    #     print('{0}:{1}'.format(key, ','.join(value)))
+
 
     #groups = [group for group in groups if group[i][6]=='pc' for i in range(1,len(group))]
     print ('Functions with push-pop pairs', len(groups))
@@ -133,12 +87,15 @@ def run(path, start_group, end_group, DEBUG, config):
         #first, last = group[0], group[-1]
         push, pops = switcher.getPushes(group)[0], switcher.getPops(group)
         l+=1
-
         # добавляем регистры в начало, считает их количество
         real_reg_count = len(push.regs)
-        return_size = function_types[push.addr] if RETURN_TYPES else 4
+        return_size = function_types[group[0].addr] if RETURN_TYPES else 4
+        restrictedRegs = restrictedRegsDict[group[0].addr]\
+            if group[0].addr in restrictedRegsDict else []
+        print(','.join(restrictedRegs),'Next')
+
         new_registers, table = utils.addRegistersToStartAndEnd\
-            (push.regs, push.bytes, return_size)
+            (push.regs, push.bytes, return_size, restrictedRegs)
         if new_registers == -1:
             full_registers_count+=1
             continue
@@ -169,7 +126,7 @@ def run(path, start_group, end_group, DEBUG, config):
         funcAddr = group[0].addr
         key = cxxfilt.demangle(addrFuncDict[funcAddr]) \
             if addrFuncDict[funcAddr]!='' else push.addr
-       # print(colored.setColored('{0}: '.format(key), colored.OKGREEN) + 'old {0}, new {1}'.format(push.regs, new_registers))
+        print(colored.setColored('{0}: '.format(key), colored.OKGREEN) + 'old {0}, new {1}'.format(push.regs, new_registers))
         regs_added += len(new_registers) - len(push.regs)
     secured = groups_count/init_group_len*100
     # output = 'End:{0}, full regs:{1}, secured:{2}%, average randomness:{3}'\

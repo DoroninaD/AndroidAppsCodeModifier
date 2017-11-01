@@ -75,12 +75,14 @@ def addRegistersToEnd(current_registers):
 
     return  current_registers + new_registers
 
-def addRegistersToStartAndEnd(current_registers, code, returnValueSize):
+def addRegistersToStartAndEnd(current_registers, code, returnValueSize, regsNotToUse):
     minreg = returnValueSize
     #minreg = 4
     start = min(minreg, int(current_registers[0][1:])) if len(current_registers) != 0 else minreg
     end = 12 if len(code) > 4 else 8
-    new_regs = ['r{0}'.format(i) for i in range(start, end) if 'r{0}'.format(i) not in current_registers]
+    new_regs = ['r{0}'.format(i) for i in range(start, end)
+                if 'r{0}'.format(i) not in current_registers
+                and 'r{0}'.format(i) not in regsNotToUse]
     if len(new_regs) == 0:
         return -1, -1
     # todo - uncomment for randomization
