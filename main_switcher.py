@@ -7,7 +7,7 @@ conditions = ['eq','ne','cs','hs','cc','lo','mi','pl','vs','vc','hi','ls','ge','
 conditions_pattern = '|'.join(conditions)
 
 NEW = True
-RETURN_TYPES = True
+RETURN_TYPES = False
 
 # def findSpSubbed(groups):
 #     containSpSubbedPattern = re.compile('\ssub\s+sp,',re.IGNORECASE)
@@ -54,7 +54,16 @@ def run(path, start_group, end_group, DEBUG, config):
 
     # check only one push
     # the same regs for push and pops
+
+    a = list(filter(None,[switcher.checkOnlyOnePush(g) for g in groups]))
+    print("Only one push:", len(a))
+
+    a = list(filter(None,[switcher.checkTheSameRegsForPushAndPops(g) for g in groups]))
+    print("The same regs for push and pop:", len(a))
+
+
     groups = list(filter(None,[switcher.checkSuitable(g) for g in groups]))
+    print("Suitable groups (push and pop with the same registers, only one push):", len(groups))
 
 
     groups = switcher.handleExternalJumps(groups, conditions, funcAddrDict)
@@ -92,7 +101,7 @@ def run(path, start_group, end_group, DEBUG, config):
         return_size = function_types[group[0].addr] if RETURN_TYPES else 4
         restrictedRegs = restrictedRegsDict[group[0].addr]\
             if group[0].addr in restrictedRegsDict else []
-        print(','.join(restrictedRegs),'Next')
+        #print(','.join(restrictedRegs),'Next')
 
         new_registers, table = utils.addRegistersToStartAndEnd\
             (push.regs, push.bytes, return_size, restrictedRegs)
@@ -126,7 +135,7 @@ def run(path, start_group, end_group, DEBUG, config):
         funcAddr = group[0].addr
         key = cxxfilt.demangle(addrFuncDict[funcAddr]) \
             if addrFuncDict[funcAddr]!='' else push.addr
-        print(colored.setColored('{0}: '.format(key), colored.OKGREEN) + 'old {0}, new {1}'.format(push.regs, new_registers))
+        #print(colored.setColored('{0}: '.format(key), colored.OKGREEN) + 'old {0}, new {1}'.format(push.regs, new_registers))
         regs_added += len(new_registers) - len(push.regs)
     secured = groups_count/init_group_len*100
     # output = 'End:{0}, full regs:{1}, secured:{2}%, average randomness:{3}'\
@@ -144,6 +153,17 @@ def run(path, start_group, end_group, DEBUG, config):
     output = 'Only for SUB_SP:{0}, only for PUSH:{1}, common: {2}'\
         .format(len(onlyForContainsSub), len(onlyWithPushes), len(handledGroups) - len(onlyWithPushes))
     colored.printColored(output, colored.BOLD)
+
+    l = []
+    handled = 0
+    for item in onlyForContainsSub:
+        res = parse.getAllSpLinesForSub(item)
+        if res!=-1 and len(res) > 0:
+            handled+=1
+            l.extend(res)
+    print ('Handled with SUB SP (only sub sp lines):', handled)
+    to_write.extend(l)
+
 
 
     #переписываем файл

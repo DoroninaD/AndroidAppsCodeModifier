@@ -52,6 +52,13 @@ def code(old_code, mask, s, is_thumb):
         return c
     return c[4:] + c[:4]
 
+def changeSubSp(old_code, offset, thumb):
+    #new = code(old_code, '11110000', new_offset, thumb)
+    c = hex(int(old_code, 16)+offset)[2:].upper()
+    if thumb:
+        return c
+    return c[4:] + c[:4]
+
 def makeLdrOrStrInner(old_instr, old_code, rx, ry, a, is_thumb, l):  # ldr rx, [ry + a]
     old_instr = old_instr.lower()
     s = a

@@ -94,7 +94,8 @@ def checkTheSameRegsForPushAndPops(group):
     pushpops = dict((g.addr,re.search(pushPatter.pattern+'|'+popPattern.pattern,g.line))
                 for g in group)
     pushpops = dict((addr, line.group()) for addr, line in pushpops.items() if line)
-
+    if len(pushpops)==0:
+        return False
     # parse regs
     regsSampler = None
     for addr, line in pushpops.items():
@@ -163,8 +164,11 @@ def getVars(lines):
     vars = [l for l in lines if pattern.search(l)]
     for var in vars:
         items = ' '.join(var.split(' ')[1:])
-        name = re.search('[a-z]+_?[0-9a-fr]*\s', items,re.IGNORECASE)\
+        try:
+            name = re.search('[a-z]+_?[0-9a-fr]*\s*', items,re.IGNORECASE)\
             .group().strip()
+        except:
+            aaa=1
         addr = getAddress(var)
         value =  re.search('=\s*-?(0x)?[a-f0-9]+\s',items,re.IGNORECASE)\
             .group().replace('=',' ').strip()

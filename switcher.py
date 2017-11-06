@@ -34,6 +34,15 @@ def getPops(group):
         return IdaHelper.getPops(group)
 
 
+def checkOnlyOnePush(group):
+    if isIDA:
+        return IdaHelper.checkOnlyOnePush(group)
+
+def checkTheSameRegsForPushAndPops(groups):
+    if isIDA:
+        return IdaHelper.checkTheSameRegsForPushAndPops(groups)
+
+
 def checkSuitable(group):
     if isIDA:
         if not IdaHelper.checkOnlyOnePush(group):
