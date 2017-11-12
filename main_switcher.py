@@ -36,6 +36,7 @@ def run(path, start_group, end_group, DEBUG, config):
     f.close()
 
     groups, addrFuncDict = switcher.getFunctions(lines)
+    switcher.resolveStaticFunctions(addrFuncDict, config, path,groups)
     funcAddrDict = dict(zip(addrFuncDict.values(),addrFuncDict.keys()))
     init_group_len = len(groups)
     print('GROUPS:',  len(groups))
@@ -92,7 +93,8 @@ def run(path, start_group, end_group, DEBUG, config):
 
     regs_added = 0
     handledGroups = []
-    for group in groups[start_group:end_group]: # 66 libcrypto - pop lr => bl - перезапись регистров
+    handledFuncs = []
+    for index,group in enumerate(groups[start_group:end_group]): # 66 libcrypto - pop lr => bl - перезапись регистров
         #first, last = group[0], group[-1]
         push, pops = switcher.getPushes(group)[0], switcher.getPops(group)
         l+=1
@@ -154,13 +156,26 @@ def run(path, start_group, end_group, DEBUG, config):
         .format(len(onlyForContainsSub), len(onlyWithPushes), len(handledGroups) - len(onlyWithPushes))
     colored.printColored(output, colored.BOLD)
 
+
+    notHandledPushes = [item for item in groups if item not in onlyWithPushes
+                        and item in containSpSubbed]
+    #onlyForContainsSub.extend(notHandledPushes)
+    s = sorted(onlyForContainsSub,key=lambda x: x[0].addr)
     l = []
     handled = 0
+    print('SUB SP:::')
     for item in onlyForContainsSub:
+        if item[0].addr == 0x4a60:
+            continue
         res = parse.getAllSpLinesForSub(item)
+        if res == -1 or len(res)==0:
+            aaa=1
         if res!=-1 and len(res) > 0:
             handled+=1
             l.extend(res)
+            key = cxxfilt.demangle(addrFuncDict[item[0].addr]) \
+                if addrFuncDict[item[0].addr] != '' else item[0].addr
+            print(colored.setColored('{0}: '.format(key), colored.OKGREEN))
     print ('Handled with SUB SP (only sub sp lines):', handled)
     to_write.extend(l)
 

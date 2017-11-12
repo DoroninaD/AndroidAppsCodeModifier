@@ -13,8 +13,6 @@ def convertOneToMany(code, is_thumb, is_pop):
         return code
     return getCode((int(code, 16) ^ int('10001011'+'0'*21,2)) & 0xFFFF0000 + pow(2, reg)) #todo проверить!
 
-
-
 def pushpopToCode(registers, code, is_thumb, real_reg_count, is_pop):
     if real_reg_count == 0:
         code = convertOneToMany(code, is_thumb, is_pop)
@@ -54,9 +52,28 @@ def code(old_code, mask, s, is_thumb):
 
 def changeSubSp(old_code, offset, thumb):
     #new = code(old_code, '11110000', new_offset, thumb)
-    c = hex(int(old_code, 16)+offset)[2:].upper()
+    #sum = offset+int(old_code, 16)
     if thumb:
-        return c
+        return old_code[:2]+hex(offset//4+0x80)[2:].upper()
+    leftPart = old_code[:5]
+    if offset in [256,512,768]:
+        rightPart = 0xC00 + offset/256
+    elif offset == 1024:
+        rightPart = 0xb01
+    elif offset < 256:
+        rightPart = offset
+    elif offset < 512:
+        rightPart = 0xf41 + (offset%260)//4
+    elif offset < 768:
+        rightPart = 0xf81 + (offset%516)//4
+    elif offset < 1024:
+        rightPart =  0xfc1 + (offset%768)//4
+    elif offset < 4080:
+        rightPart = 0xe41 + (offset%1040)//16
+    else:
+        aaa=1
+    c = leftPart + hex(rightPart)[2:].upper().rjust(3,'0')
+   # c = hex(int(old_code, 16)+offset)[2:].upper()
     return c[4:] + c[:4]
 
 def makeLdrOrStrInner(old_instr, old_code, rx, ry, a, is_thumb, l):  # ldr rx, [ry + a]

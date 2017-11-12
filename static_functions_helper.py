@@ -1,20 +1,26 @@
-import re, utils, os, parse_functions_utils
+import re, utils, os, parse_functions_utils, switcher, codecs
 
 #1. Cоздать {name}_nonstatic.txt - руками или сгенерить
 
 #file = {name}.txt - открытый
 #address = адрес push, у которого нет имени
 
-def getName(static_file_lines, address, nonstatic_file, newNames):
+def getName(static_file_lines, address, nonstatic_file, newNames, funcAddr):
 
+    pattern = re.compile('(:?bl|b|bx|b\.n)\s*{0}'.format(address),re.IGNORECASE)
+    line_where_called = None
+    for g in static_file_lines:
+        l = switcher.searchInLines(pattern, g)
+        if len(l)!=0:
+            line_where_called = l[0]
 
     # Найти, где в исходном файле вызывается, т.е. bl|b|bx address
-    line_where_called, line_index = searchInLines\
-        ('(:?bl|b|bx|b\.n)\s*{0}\s*<.*>'.format(address), static_file_lines)
+    # line_where_called, line_index = searchInLines\
+    #     ('(:?bl|b|bx|b\.n)\s*{0}\s*<.*>'.format(address), static_file_lines)
     if line_where_called is None:
         return ''
         #raise Exception('{0} is not called in static {1}'.format(address, nonstatic_file))
-    a1 = utils.getAddressFromLine(static_file_lines[line_index]) #адрес, где вызывается функций
+    a1 = line_where_called.addr #адрес, где вызывается функций
     #извлекаем имя функции из line_where_called
     #function_name = re.search('<.*@@', line_where_called).group()[1:-2]
     #delta = re.search('Base\+.*>', line_where_called).group()[5:-1]
@@ -25,24 +31,25 @@ def getName(static_file_lines, address, nonstatic_file, newNames):
     #     if result is not None:
     #         break
     # a2 = utils.getAddressFromLine(static_file_lines[line_index])
-    a2, index = getFuncBegin(line_index, static_file_lines)
+    #a2, index = getFuncBegin(line_where_called, static_file_lines)
+    a2 = line_where_called.funcAddr
     if a2 is None:
         return ''
     #теперь в a2 лежит индекс начала функции
     #todo parse strings to ints
     #result, index = searchInLines('<{0}@@Base>:'.format(function_name), static_file_lines)
     #a2 =  utils.getAddressFromLine(static_file_lines[index+1])
-    delta = hexstringToInt(a1) - hexstringToInt(a2) # смещение вызова искомой функции относительно начала той, в которой вызывается
+    delta = int(a1,16) - int(a2,16) # смещение вызова искомой функции относительно начала той, в которой вызывается
     # определяем имя функции по адресу a2
-    function_name = re.search('<.*>:', static_file_lines[index-1])
-    if function_name is None:
-        newname_address = utils.getAddressFromLine(static_file_lines[index])
+    #function_name = re.search('<.*>:', static_file_lines[index-1])]
+    function_name = funcAddr[a2]
+    if re.search('((sub)|(local))_[0-9a-f]+',function_name,re.IGNORECASE):
+        newname_address = a2
         if newname_address not in newNames:
             return ''
+        function_name = newNames[newname_address]
         #function_name = re.sub('plt','@Base',newNames[newname_address])+':'
-        function_name = '<{0}@@Base>:'.format(newNames[newname_address])
-    else:
-        function_name = function_name.group()
+
 
     #ищем, в каком файле находится определение функции function_name
     # demangled_function_name = function_name[1:-2] #убираем <>:
@@ -61,27 +68,36 @@ def getName(static_file_lines, address, nonstatic_file, newNames):
     #                 break
 
     #открываем nonstatic_file, ищем начало функции function_name
-    with open(nonstatic_file) as f:
+    with codecs.open(nonstatic_file, 'r', 'utf-8', errors="ignore") as f:
         data = f.readlines()
-        result, index = searchInLines(function_name, data)
-        if result is None:
-            return ''
+        data = [l for l in data if '.text' in l]
+        ns_funcs,ns_dict = switcher.getFunctions(data)
+        #result, index = searchInLines(function_name, data)
+        ns_funcAddr = dict(zip(ns_dict.values(), ns_dict.keys()))
+        addr = ns_funcAddr[function_name]
+        group = [f for f in ns_funcs if f[0].addr == addr][0]
+        # if result is None:
+        #     return ''
             #raise Exception('{0} is not called in nonstatic {1}'.format(address, nonstatic_file))
-        b1 = utils.getAddressFromLine(data[index+1]) # адрес начала функции function_name
-        b2 = hexstringToInt(b1) + delta # адрес, где вызывается искомая функция
+        #b1 = utils.getAddressFromLine(data[index+1]) # адрес начала функции function_name
+        b1 = group[0].addr
+        b2 = int(b1,16) + delta # адрес, где вызывается искомая функция
         # ищем строку в data, у которой этот адрес
-        row, ind = searchInLines('.*{0}:.*'.format(hex(b2)[2:]), data)
-        if row is None:
-            return ''
+        #row, ind = searchInLines('.*{0}:.*'.format(hex(b2)[2:]), data)
+        row = [l for l in group if l.addr == hex(b2)][0]
+        # if row is None:
+        #     return ''
             #raise Exception('{0} address is not found in nonstatic {1}'.format(b2, nonstatic_file))
-        row  = data[ind]
-        found_name = re.search('<.*>', row)
-        if found_name is None:
-            #raise Exception('No func name at {0} in {1}', b2, nonstatic_file)
-            return ''
-        if re.search('(:?@@Base|@plt)>',found_name.group()) is None:
-            return ''
-        return found_name.group().split('@')[0][1:]
+        #row  = data[ind]
+        #found_name = re.search('<.*>', row)
+        found_name = row.line.split(';')[0].strip().split(' ')[-1]
+        return found_name
+        # if found_name is None:
+        #     #raise Exception('No func name at {0} in {1}', b2, nonstatic_file)
+        #     return ''
+        # if re.search('(:?@@Base|@plt)>',found_name.group()) is None:
+        #     return ''
+        #return found_name.group().split('@')[0][1:]
 
 def searchInLines(regex, lines):
     for index, line in enumerate(lines):
@@ -94,22 +110,26 @@ def hexstringToInt(str):
     return int('0x'+str, 16)
 
 
-def getFuncBegin(start_index, static_file_lines):
+def getFuncBegin(line, static_file_lines):
+    group = [g for g in static_file_lines if g[0].addr == line.funcAddr][0]
+    start_index = group.index(line)
     pop_count = 0
     while True:
         if start_index == 0:
             return None, None
         start_index -= 1
-        some_func_end = re.search('pop|ldmia', static_file_lines[start_index])
+        popPattern, pushPattern = re.compile('pop|ldmia|ldmfd',re.IGNORECASE),\
+        re.compile('push|stmdb|stmfd', re.IGNORECASE)
+        some_func_end = switcher.searchPattern(popPattern,group[start_index])
         if some_func_end is not None:
             pop_count+=1
             continue
-        result = re.search('push|stmdb', static_file_lines[start_index])
+        result = switcher.searchPattern(pushPattern,group[start_index])
         if result is not None:
             if pop_count == 0:
                 break
             pop_count-=1
-    return utils.getAddressFromLine(static_file_lines[start_index]), start_index
+    return group[start_index].addr, start_index
 
 
 def generateNonStaticFile(in_file, path):

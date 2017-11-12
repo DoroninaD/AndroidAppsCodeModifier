@@ -306,6 +306,9 @@ def getAllSpLinesForSub(lines):
     addSubPattern = re.compile('.*(add|sub)(.w)?\s*sp(,\s?sp)?,\s?#[0-9]+', re.IGNORECASE)
     sub_add_sp_lines = switcher.searchInLines(addSubPattern, lines)
 
+    if len(sub_add_sp_lines)!=2:
+        return -1
+
     subSpLine = sub_add_sp_lines[0]
     if len(sub_add_sp_lines) != 0:
         sub_ind = lines.index(subSpLine)
@@ -316,11 +319,26 @@ def getAllSpLinesForSub(lines):
         a = 0
         sub_ind = 0
 
-    spOffset = random.randint(1, 100)
+    spOffset = random.randint(1, 50)*4
+    if spOffset+a > 1024:
+        spOffset += 16-(spOffset+a)%16
+    if subSpLine.thumb and len(subSpLine.bytes)==4 and spOffset+a > 508:
+        spOffset = 508-a
+
+    print('old {0}, new {1}'.format(a,spOffset+a))
     # меняем сдвиг sub sp, #4 -> sub sp, #4+spOffset
-    newSupSP = arm_translate.changeSubSp(subSpLine.bytes, spOffset, subSpLine.thumb)
-    to_write.append((subSpLine.addr,
+    newSupSP = arm_translate.changeSubSp(subSpLine.bytes, spOffset+a, subSpLine.thumb)
+    try:
+        to_write.append((subSpLine.addr,
                      len(subSpLine.bytes) // 2, utils.toLittleEndian(newSupSP)))
+    except:
+        aaa=1
+
+    for addSpLine in sub_add_sp_lines[1:]:
+        newAddSP = arm_translate.changeSubSp(addSpLine.bytes, spOffset+a, addSpLine.thumb)
+        to_write.append((addSpLine.addr,
+                     len(addSpLine.bytes) // 2, utils.toLittleEndian(newAddSP)))
+
     # ищем строки вида [sp, #b] - но только после вычитания (sub_ind)
     # от всех отнимаем spOffset
     # use_sp_lines = list(filter(None,[re.search('.*(ldr|str)(b|h|sb|sh|d)?(.w)?.*\[sp, #[0-9]+\].*', line) for line in lines]))
@@ -333,17 +351,17 @@ def getAllSpLinesForSub(lines):
         b = switcher.getNumber(l)
         if b is None:
             return -1
-
-        pattern = re.compile \
-            ('(\s+r10|r11|r12|sp|lr|pc|r[0-9]|((d|s)(([1-2][0-9])|3[0-1]|[0-9]))),', re.IGNORECASE)
-        rx = switcher.searchPattern(pattern, l).group().strip().replace(',', '')
-        # code, is_thumb = utils.getCodeFromLine(l.group())
-        offset = b+spOffset
-        new_instr_code = arm_translate. \
-            makeLdrOrStr(instr, l.bytes, rx.lower(), 'sp', offset, l.thumb, l.line)
-        # to_write ... [sp, #b + new_regs_count*4]
-        to_write.append((l.addr,
-                         len(l.bytes) // 2, utils.toLittleEndian(new_instr_code)))
+        if b-a<0:   #смотрим только на регистры и входные параметры
+            pattern = re.compile \
+                ('(\s+r10|r11|r12|sp|lr|pc|r[0-9]|((d|s)(([1-2][0-9])|3[0-1]|[0-9]))),', re.IGNORECASE)
+            rx = switcher.searchPattern(pattern, l).group().strip().replace(',', '')
+            # code, is_thumb = utils.getCodeFromLine(l.group())
+            offset = b+spOffset
+            new_instr_code = arm_translate. \
+                makeLdrOrStr(instr, l.bytes, rx.lower(), 'sp', offset, l.thumb, l.line)
+            # to_write ... [sp, #b + new_regs_count*4]
+            to_write.append((l.addr,
+                             len(l.bytes) // 2, utils.toLittleEndian(new_instr_code)))
 
     # ищем строки вида add rx, sp, (#c) - должна быть одна ? todo
     # add_sp_to_reg = list(filter(None, [re.search('.*(add(.w)?|mov)\s*(r[0-9]|r10|r11|r12), sp(, #[1-9]+)?.*', line) for line in lines]))
@@ -445,12 +463,15 @@ def getRxLinesForSubSp(lines, line, sp_subbed, sub_ind, spOffset):
         instr = switcher.searchPattern(pattern, l).group()
         d = switcher.getNumber(l)
         if d is None:
+            switcher.getNumber(l)
             return -1
-        pattern = re.compile('(\s+r10|r11|r12|sp|lr|pc|r[0-9]|((d|s)(([1-2][0-9])|3[0-1]|[0-9]))),', re.IGNORECASE)
-        rx = switcher.searchPattern(pattern, l).group().strip().replace(',', '')
-        offset = d+spOffset
-        new_instr_code = arm_translate.makeLdrOrStr(instr, l.bytes, rx, reg, offset, l.thumb, l.line)
-        to_write.append((l.addr, len(l.bytes) // 2, utils.toLittleEndian(new_instr_code)))
+        n = c + d - sp_subbed
+        if n < 0:  # todo а что если будет sub rx, sp?
+            pattern = re.compile('(\s+r10|r11|r12|sp|lr|pc|r[0-9]|((d|s)(([1-2][0-9])|3[0-1]|[0-9]))),', re.IGNORECASE)
+            rx = switcher.searchPattern(pattern, l).group().strip().replace(',', '')
+            offset = d+spOffset
+            new_instr_code = arm_translate.makeLdrOrStr(instr, l.bytes, rx, reg, offset, l.thumb, l.line)
+            to_write.append((l.addr, len(l.bytes) // 2, utils.toLittleEndian(new_instr_code)))
 
     # str rx, [...]
     strRegPattern = re.compile('.*str(b|h|sb|sh|sw|d)?(.w)?\s{0}.*'.format(reg), re.IGNORECASE)

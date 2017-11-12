@@ -148,11 +148,16 @@ def getNumber(line):
     a = line.line
     for key, value in [(key, value) for key, value in varsDict.items() if key[0]==line.funcAddr]:
         a = a.replace(key[1], value)
-    number = re.search('#-?(0x)?[0-9a-f\-\+x]+', a, re.IGNORECASE)
-    if not number:
+    number = re.search('#-?(0x)?[0-9a-f\-\+x]+\]?!?\s', a, re.IGNORECASE)
+    if not number and '#' not in a:
         return 0
+    if not number:
+       # return 0
+        return None
     try:
-        return ast.literal_eval(number.group()[1:])
+        return ast.literal_eval(number.group()
+                                .replace(']','')
+                                .replace('!','')[1:])
     except:
         return None
 
